@@ -53,6 +53,7 @@ def evaluate(args, task_id, data, model, id2label, all_ori_words, file_name=None
         with torch.no_grad():
             logits = model.predict(task_id, input_word_ids, char_ids, input_mask)
 
+        # print(len(all_ori_words), [len(x) for x in all_ori_words])
         # print(len(logits), [len(x) for x in logits])
         # print(len(label_ids), [len(x) for x in label_ids])
         # print(len(input_mask), [sum(x) for x in input_mask])
@@ -65,34 +66,21 @@ def evaluate(args, task_id, data, model, id2label, all_ori_words, file_name=None
                     ori_labels.append(id2label[g.item()])
             pred_labels.append(None)
             ori_labels.append(None)
-
     ori_words = []
     for sent in all_ori_words:
         ori_words.extend(sent+[None])
-
-    # print(ori_words)
-    # print(pred_labels)
-    # print(ori_labels)
     eval_list = []
+    # print(len(pred_labels), len(ori_labels), len(ori_words))
     for plabel, olabel, word in zip(pred_labels, ori_labels, ori_words):
         if plabel is not None:
-            # print(word+" "+olabel+" "+plabel+"\n")
             eval_list.append(f"{word} {olabel} {plabel}\n")
         else:
             eval_list.append("\n")
 
     if file_name is not None:
         with open(file_name, "w", encoding="utf-8") as f:
-            for line in eval_list:
-                f.write(line)
-
-            # for plabel, olabel, word in zip(pred_labels, ori_labels, ori_words):
-            #     if plabel is not None and olabel is not None and plabel is not None:
-            #         f.write(word+" "+olabel+" "+plabel+"\n")
-            #         # eval_list.append(f"{word} {olabel} {plabel}\n")
-            #     else:
-            #         # eval_list.append("\n")
-            #         f.write("\n")
+          for line in eval_list:
+            f.write(line)
 
     # eval the model
     counts = conlleval.evaluate(eval_list)
@@ -117,7 +105,7 @@ def main():
     parser.add_argument("--not_bert_learning_rate", default=5e-4, type=float)
 
     parser.add_argument("--num_train_epochs", default=10, type=float)
-    parser.add_argument("--warmup_proprotion", default=0.4, type=float)
+    parser.add_argument("--warmup_proprotion", default=0.2, type=float)
 
     parser.add_argument("--seed", type=int, default=2020)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1)
@@ -129,11 +117,15 @@ def main():
     parser.add_argument("--need_birnn", default=False, type=boolean_string)
     parser.add_argument("--rnn_dim", default=128, type=int)
 
-    # 增加CNN
+    # 增加charCNN
     parser.add_argument("--need_charcnn", default=False, type=boolean_string)
     parser.add_argument("--share_cnn", default=True, type=boolean_string)
     parser.add_argument("--char_embed", default=50, type=int)
     parser.add_argument("--char_out_dim", default=300, type=int)
+
+    # 增加CNN
+    parser.add_argument("--need_cnn", default=False, type=boolean_string)
+    parser.add_argument("--cnn_out_dim", default=300, type=int)
 
     # 增加SAC
     parser.add_argument("--need_sac", action="store_true")
@@ -198,6 +190,8 @@ def main():
                                             char_embedding_dim=args.char_embed,
                                             char_out_dim=args.char_out_dim,
                                             task_infos=tasks,
+                                            need_cnn=args.need_cnn,
+                                            cnn_out_dim=args.cnn_out_dim,
                                             need_sac=args.need_sac,
                                             sac_factor=args.sac_factor,
                                             need_birnn=args.need_birnn,
@@ -244,7 +238,7 @@ def main():
 
         # 为bert和非bert设置不同的学习率
         optimizer_grouped_parameters = [
-            # in bert 
+            # in bert
             {'params': [p for n, p in model.named_parameters() if "bert" in n and not any(nd in n for nd in no_decay)],
              'weight_decay': 0.01, "lr": args.bert_learning_rate},
             {'params': [p for n, p in model.named_parameters() if "bert" in n and any(nd in n for nd in no_decay)],
@@ -306,16 +300,16 @@ def main():
                     optimizer.step()
                     model.zero_grad()
                     update_step = update_step + 1
-                    if update_step % 1 == 0:
+                    if update_step % 100 == 0:
                         logger.info("in ep %d, choose task: %d, loss %f", ep, task_id, loss)
             if args.do_eval:
                 for task in tasks:
                     logger.info("Evalating task %s, Train set", task["task_name"])
                     train_filename, test_filename = None, None
                     if ep == args.num_train_epochs:
-                        train_filename = task["task_name"]+"train.output.txt"
-                        test_filename = task["task_name"] + "test.output.txt"
-                    evaluate(args, task["task_id"], task["train_data"], model, task["id2label"], task["train_ori_words"], file_name=train_filename)
+                        train_filename = task["task_name"] + ".train.output.txt"
+                        test_filename = task["task_name"] + ".test.output.txt"
+                    # evaluate(args, task["task_id"], task["train_data"], model, task["id2label"], task["train_ori_words"], file_name=train_filename)
                     logger.info("Evalating task %s, Eval set", task["task_name"])
                     evaluate(args, task["task_id"], task["eval_data"], model, task["id2label"], task["eval_ori_words"], file_name=test_filename)
 

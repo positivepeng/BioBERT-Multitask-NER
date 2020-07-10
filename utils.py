@@ -7,7 +7,6 @@ import pickle
 from pytorch_transformers import BertTokenizer
 from torch.utils.data import TensorDataset
 from tqdm import tqdm
-
 logger = logging.getLogger(__name__)
 
 
@@ -24,12 +23,12 @@ class InputFeatures(object):
     """A single set of features of data."""
 
     def __init__(self, input_word_ids, input_mask, label_ids, label_mask, ori_words, input_char_ids=None):
-        self.input_word_ids = input_word_ids  # 数值化的单词输入
-        self.input_mask = input_mask  # BERT输入mask
-        self.label_ids = label_ids  # 数值化的标签
-        self.label_mask = label_mask  # tokenizer后标识单词开头
-        self.ori_words = ori_words  # 原始单词（tokenizer前的）
-        self.input_char_ids = input_char_ids  # 单词的字符级表示
+        self.input_word_ids = input_word_ids   # 数值化的单词输入
+        self.input_mask = input_mask           # BERT输入mask
+        self.label_ids = label_ids             # 数值化的标签
+        self.label_mask = label_mask           # tokenizer后标识单词开头
+        self.ori_words = ori_words             # 原始单词（tokenizer前的）
+        self.input_char_ids = input_char_ids   # 单词的字符级表示
 
 
 class NerProcessor(object):
@@ -42,7 +41,7 @@ class NerProcessor(object):
             read_lines = f.readlines()
 
             if self.debug:
-                read_lines = read_lines[:200]
+                read_lines = read_lines[:500]
 
             sep = "\t" if "\t" in read_lines[0] else " "
             lines, words, labels = [], [], []
@@ -106,7 +105,7 @@ def convert_examples_to_features(examples, tokenizer, label_list, max_seq_length
         for word, label in zip(textlist, labellist):
             token = tokenizer.tokenize(word)
             tokens.extend(token)
-            feature_label_mask.extend([1] + [0] * (len(token) - 1))
+            feature_label_mask.extend([1] + [0]*(len(token)-1))
 
             # 如果tokenize后单词变为了多个则对标签序列进行扩充
             for m in range(len(token)):
@@ -120,8 +119,7 @@ def convert_examples_to_features(examples, tokenizer, label_list, max_seq_length
 
         if char_map is not None:
             feature_input_char_ids = [[0] * max_word_len]  # [CLS]
-            feature_input_char_ids.extend(
-                list(map(lambda x: [char_map.get(ch, 0) for ch in x] + [0] * (max_word_len - len(x)), textlist)))
+            feature_input_char_ids.extend(list(map(lambda x: [char_map.get(ch, 0) for ch in x] + [0] * (max_word_len - len(x)), tokens[1:-1])))
             feature_input_char_ids.append([0] * max_word_len)  # [SEP]
             if len(feature_input_char_ids) > max_seq_length:
                 feature_input_char_ids = feature_input_char_ids[:max_seq_length]
@@ -133,8 +131,8 @@ def convert_examples_to_features(examples, tokenizer, label_list, max_seq_length
             labels = labels[:max_seq_length]
             feature_label_mask = feature_label_mask[:max_seq_length]
             feature_ori_words = feature_ori_words[:sum(feature_label_mask)]
-
-        feature_input_mask = [1] * len(tokens) + [0] * (max_seq_length - len(tokens))
+            
+        feature_input_mask = [1] * len(tokens) + [0] * (max_seq_length-len(tokens))
         feature_input_word_ids = tokenizer.convert_tokens_to_ids(tokens) + [0] * (max_seq_length - len(tokens))
         feature_label_ids = list(map(lambda x: label_map[x], labels)) + [0] * (max_seq_length - len(labels))
         feature_label_mask.extend([0] * (max_seq_length - len(feature_label_mask)))
@@ -145,11 +143,9 @@ def convert_examples_to_features(examples, tokenizer, label_list, max_seq_length
         # print(len(feature_label_ids), feature_label_ids)
         # print(len(feature_label_mask), feature_label_mask)
         # if feature_input_char_ids is not None:
-        # print(len(feature_input_char_ids), feature_input_char_ids)
+        #     print(len(feature_input_char_ids), feature_input_char_ids)
 
-        features.append(InputFeatures(input_word_ids=feature_input_word_ids, input_mask=feature_input_mask,
-                                      label_ids=feature_label_ids, label_mask=feature_label_mask,
-                                      ori_words=feature_ori_words, input_char_ids=feature_input_char_ids))
+        features.append(InputFeatures(input_word_ids=feature_input_word_ids, input_mask=feature_input_mask, label_ids=feature_label_ids, label_mask=feature_label_mask, ori_words=feature_ori_words, input_char_ids=feature_input_char_ids))
 
     return features
 
@@ -205,16 +201,16 @@ if __name__ == "__main__":
                'F': 56, '3': 57, 'G': 58, 'P': 59, ':': 60, '?': 61, 'K': 62, 'W': 63, 'T': 64, "'": 65, 'J': 66,
                'L': 67, 'U': 68, '+': 69, ';': 70, '7': 71, '/': 72, 'Z': 73, '=': 74, 'Y': 75, 'Q': 76, '[': 77,
                '"': 78, '>': 79, '*': 80, ']': 81, '&': 82, '$': 83, '_': 84}
-    # features = convert_examples_to_features(examples[:2], tokenizer, label_list, max_seq_length=128, char_map=char2id)
-    #
-    # all_input_word_ids = torch.tensor([f.input_word_ids for f in features], dtype=torch.long)
-    # all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
-    # all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
-    # all_label_mask = torch.tensor([f.label_mask for f in features], dtype=torch.long)
-    #
-    # if char2id is not None:
-    #     all_char_ids = torch.tensor([f.input_char_ids for f in features], dtype=torch.long)
-    #     data = TensorDataset(all_input_word_ids, all_input_mask, all_label_ids, all_label_mask, all_char_ids)
-    # else:
-    #     data = TensorDataset(all_input_word_ids, all_input_mask, all_label_ids, all_label_mask)
-    print(tokenizer.tokenize("early"))
+    features = convert_examples_to_features(examples[:2], tokenizer, label_list, max_seq_length=128, char_map=char2id)
+
+    all_input_word_ids = torch.tensor([f.input_word_ids for f in features], dtype=torch.long)
+    all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
+    all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
+    all_label_mask = torch.tensor([f.label_mask for f in features], dtype=torch.long)
+
+    if char2id is not None:
+        all_char_ids = torch.tensor([f.input_char_ids for f in features], dtype=torch.long)
+        data = TensorDataset(all_input_word_ids, all_input_mask, all_label_ids, all_label_mask, all_char_ids)
+    else:
+        data = TensorDataset(all_input_word_ids, all_input_mask, all_label_ids, all_label_mask)
+
